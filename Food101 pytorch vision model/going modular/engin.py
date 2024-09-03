@@ -1,51 +1,14 @@
+# Create train and test loop functions
+from tqdm.auto import tqdm
+# import pathlib
 import torch
-import matplotlib.pyplot as plt
-import numpy as np
 
-from torch import nn
+# import timer
 from timeit import default_timer as timer
 
-from pathlib import Path
+# setting device agnostic code
+device = 'cuda' if torch.cuda.is_available() else "cpu"
 
-
-# Early stopping class
-class EarlyStopper:
-    def __init__(self, patience=1, min_delta=0):
-        self.patience = patience
-        self.min_delta = min_delta
-        self.counter = 0
-        self.min_validation_loss = float('inf')
-
-    def early_stop(self, validation_loss):
-        if validation_loss < self.min_validation_loss:
-            self.min_validation_loss = validation_loss
-            self.counter = 0
-        elif validation_loss > (self.min_validation_loss + self.min_delta):
-            self.counter += 1
-            if self.counter >= self.patience:
-                return True
-        return False
-
-# accuracy function
-def accuracy_fn(y_pred, y_true):
-    """Calculates accuracy between truth labels and predictions.
-
-    Args:
-        y_true (torch.Tensor): Truth labels for predictions.
-        y_pred (torch.Tensor): Predictions to be compared to predictions.
-
-    Returns:
-        [torch.float]: Accuracy value between y_true and y_pred, e.g. 78.45
-    """
-    correct = torch.eq(y_true, y_pred).sum().item()
-    acc = (correct / len(y_pred)) * 100
-    return acc
-
-
-# Create train and test loop functions
-
-#setting device agnostic code 
-device = 'cpu'
 
 def train_step(model : torch.nn.Module,
                data_loader : torch.utils.data.DataLoader,
@@ -127,6 +90,24 @@ def print_train_time(start, end, device=None):
     print(f"\nTrain time on {device}: {total_time:.3f} seconds")
     return total_time
 
+class EarlyStopper:
+    def __init__(self, patience=1, min_delta=0):
+        self.patience = patience
+        self.min_delta = min_delta
+        self.counter = 0
+        self.min_validation_loss = float('inf')
+
+    def early_stop(self, validation_loss):
+        if validation_loss < self.min_validation_loss:
+            self.min_validation_loss = validation_loss
+            self.counter = 0
+        elif validation_loss > (self.min_validation_loss + self.min_delta):
+            self.counter += 1
+            if self.counter >= self.patience:
+                return True
+        return False
+
+
 def train(model: torch.nn.Module,
           train_data_loader:torch.utils.data.DataLoader,
           test_data_loader : torch.utils.data.DataLoader,
@@ -136,11 +117,22 @@ def train(model: torch.nn.Module,
           calculate_train_time : bool = True,
           seed : int = None,
           device : torch.device = device,
-          epochs : int = 10):
+          epochs : int = 10,
+          early_stop : bool = False,
+          patience : int = 1,
+          min_delta : int = 0):
     
+    if early_stop:
+        early_stopper = EarlyStopper(patience=patience,
+                                     min_delta = min_delta)
+    else :
+        early_stopper = None
+
 
     if calculate_train_time:
         train_time_start = timer()
+    
+
     if seed : 
         torch.manual_seed(42)
         torch.cuda.manual_seed(42)
@@ -149,7 +141,11 @@ def train(model: torch.nn.Module,
                "train_acc_epoch" : [],
                "test_loss_epoch" : [],
                "test_acc_epoch" : [],
+               "Estimated_train_time" : None
                }
+    
+    
+
     model.to(device)
     for epoch in tqdm(range(epochs)):
 
@@ -164,49 +160,30 @@ def train(model: torch.nn.Module,
                    acc_fnc = acc_fnc,
                    device = device)
         results['train_loss_epoch'].append(train_loss), results['train_acc_epoch'].append(train_acc)
-
         # One testing step per epoch
+
         test_loss , test_acc = test_step(model = model,
                   data_loader = test_data_loader,
                   loss_fnc = loss_fnc,
                   acc_fnc = acc_fnc,
                   device = device)
+        
         results['test_loss_epoch'].append(test_loss), results['test_acc_epoch'].append(test_acc)
-
         #print what is happening 
         print(f"Train Loss : {train_loss:.4f} | Train Accuravy : {train_acc:.2f}")
         print(f"Test Loss : {test_loss:.4f} | Test Accuracy : {test_acc:.2f}")
+
+        #early stopping
+        if early_stopper:
+            if early_stopper.early_stop(test_loss):
+                print(f"we are in epoch {epoch}")
+                break
+        else :
+            early_stopper = None 
     train_time_end = timer()
 
+
     if calculate_train_time:
+        results['Estimated_train_time'] = print_train_time(start = train_time_start, end = train_time_end)
         print_train_time(start = train_time_start, end = train_time_end)
     return results
-
-
-def plot_loss_curves(epochs : int,
-                     train_loss : np.array,
-                     test_loss : np.array,
-                     train_acc : np.array,
-                     test_acc : np.array):
-    """Function used to plot the train and test losses and accuracies through epochs"""
-    plt.figure(figsize = (15,7))
-    epochs = np.array(range(epochs))
-    # Plotting the train and test lossed 
-    plt.subplot(1, 2, 1)
-    plt.plot(epochs, train_loss, label = 'train loss')
-    plt.plot(epochs, test_loss, label = 'test loss')
-    plt.axis(True)
-    plt.title(f"Train and Loss Curves")
-    plt.xlabel("Epochs")
-    plt.ylabel("Train Test Loss")
-    plt.legend()
-    
-    plt.subplot(1, 2, 2)
-    plt.plot(epochs, train_acc, label = 'train acc')
-    plt.plot(epochs, test_acc, label = 'test acc')
-    plt.axis(True);
-    plt.xlabel("Epochs")
-    plt.ylabel("Train Test Accuracy")
-    plt.title(f"Train and Test Accuracy Curves")
-    plt.legend()
-    plt.show();
