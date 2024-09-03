@@ -4,7 +4,6 @@
 This project is a deep learning-based image classification task using a TinyVGG model to classify images into three categories: Pizza, Steak, and Sushi. The model is trained using PyTorch, and the dataset follows the `ImageFolder` format.
 
 ## Project Structure:
-```plaintext
 ├── Data/
 │   └── pizza_steak_sushi/
 │       ├── train/
@@ -35,7 +34,6 @@ This project is a deep learning-based image classification task using a TinyVGG 
 ├── data_setup.py
 ├── train.py
 └── predict.py
-```
 
 ## Dataset
 
